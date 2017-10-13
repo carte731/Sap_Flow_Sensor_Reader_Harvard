@@ -1,0 +1,151 @@
+#!/usr/bin/python
+
+import os
+import sys
+import datetime
+import time
+
+def masterprobe(): #makes list of probes connected to Beaglebone board
+    blist = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z']
+    probelist=[]
+    master = []
+    probelist_raw=open("/sys/devices/w1_bus_master1/w1_master_slaves", 'r')
+    master_board_list_local=open("/root/sap_2017/master_board_list.txt", 'r+')
+    pro = probelist_raw
+    mbl = master_board_list_local
+    for probe in pro:
+        probe = probe.rstrip() #removes newline character \n from list elements.
+        probelist.append(probe)
+    probelist_raw.close()
+    for i in mbl:
+        i = i.rstrip()
+        master.append(i)
+    bnum = 0
+    for u in probelist: #makes sure the probe list matchs the saved and local master list
+        row = ''
+        if u not in master and u != 'not found.': #adds to master list text file if not already there and turns that probe on
+            for i in master:
+                if i[:5] == 'board':
+                    bnum += 1
+            try:
+                b_id = 'board' + blist[bnum]
+            except IndexError:
+                bnum = bnum - 26
+                b_id = 'board' + blist[bnum] + '2'
+            row += b_id + '\n' + u + '\n' + '----' + '\n'
+            bnum = 0
+            master.append(row)
+            master_board_list_local.write(row)
+    master_board_list_local.close()
+    return(probelist, master)
+
+def op_list(probelist, master):
+    on_master = []
+    barrier = False
+    gate = False
+    oncount = 0
+    loc = 0
+    for i in master:
+        if i[:5] == 'board':
+            start = master.index(i)
+        elif i in probelist:
+            oncount += 1
+        elif i == '----':
+            barrier = True
+        if barrier == True:
+            if oncount > 0:
+                master.insert(start, "ON")
+                oncount = 0
+            barrier = False
+    # print(master)
+    for s in master:
+        if s == "ON":
+            gate = True
+        if gate == True:
+            if s[:5] == 'board':
+                on_master.append(s)
+            if len(s) >= 15:
+                on_master.append(s)
+            if s == 'hot' or s == 'cold':
+                on_master.append(s)
+            if s == '----':
+                gate = False
+    return(on_master)
+
+def reader(probelist, on_master):
+    data_output=open("/root/sap_2017/data_output.txt", 'a')
+    now = datetime.datetime.now()
+    master_data = '\n' + now.strftime("%Y-%m-%d")
+    key = 1
+    while key < 5:
+        for i in on_master:
+            sub_data = ''
+            if i[:5] == 'board':
+                sub_data += '\n' + str(key) + ', '
+                sub_data += now.strftime("%H:%M") + ', '
+                sub_data += i + ', '
+            elif len(i) >= 15:
+                t = temp(i)
+                sub_data += i + ', '
+                sub_data += t + ', '
+            if i == 'hot' or i == 'cold':
+                sub_data += i + ', '     
+            master_data += sub_data
+        master_data += '\n'
+        key += 1
+    data_output.write(master_data)
+    data_output.close()
+    return(master_data)
+    
+        
+
+def temp(i):
+    probe=open("/sys/devices/w1_bus_master1/" + i + "/w1_slave", 'r')
+    for u in probe:
+        u = u.rstrip()
+        sub_probe = ''
+        for x in u:
+            r = u.index(x) + 1
+            if x == 't' and u[r] == '=':
+                p = u.index(x)
+                sub_probe += u[p+2:]
+                sub_probe = sub_probe[:2] + '.' + sub_probe[2:4]
+    float(sub_probe)
+    probe.close()
+    return(sub_probe)
+
+def tempreader(probelist, i): #Reads temps, adds them to operational dictionary, displays it and pumps out data.
+    try:
+        for i in probelist: 
+            sub_probe = ''
+            probe=open("/sys/devices/w1_bus_master1/" + i + "/w1_slave", 'r')
+            for u in probe:
+                for x in u:
+                    r = u.index(x) + 1
+                    if x == 't' and u[r] == '=':
+                        p = u.index(x)
+                        sub_probe += u[p+2:]
+                        sub_probe = sub_probe[:2] + '.' + sub_probe[2:4]
+            probe.close()
+            return(sub_probe)
+    except:
+        print('\n' + "No probes found." + "\n" + "Either the probe board isn't being supplied power or the data and ground pins aren't install proper on the BeagleBone." + '\n' + "Ground pin:1 row:p8, Data pin:11, row:p8." + '\n')
+
+# def SIcheckerpro(): #a function that checks if there is an active internet connect, if not back up on SD card, try to send through Harvard U, bluetooth and send a help message. WRITE IN BASH!!!
+
+# def sendit(): #sends data to config position and pumps data out over the internet to tower PC, off site storage and website
+
+def temp_converter(c): #converts temp to fahrenheit base off of config preferences 
+    f = c * 9/5 + 32     
+    return(c, f) 
+
+def main(): #add a try and exception to each section. Add a while loop that goes off of config operational time line.
+    while True:
+        probelist, master = masterprobe()
+        on_master = op_list(probelist, master)
+        data = reader(probelist, on_master)
+        time.sleep(10)
+        # t = temp(probelist)
+        print(1)
+
+main() #excutes program

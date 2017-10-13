@@ -1,0 +1,224 @@
+#!/usr/bin/python
+
+import os
+import os.path
+import sys
+import datetime
+import time
+import pandas as pd
+import csv
+import urllib2 #for python 2
+# import urllib.request  as urllib2 #for python 3 
+
+def masterprobe(): #makes list of probes connected to Beaglebone board
+    blist = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z']
+    probelist=[]
+    master = []
+    probelist_raw=open("/sys/devices/w1_bus_master1/w1_master_slaves", 'r')
+    master_board_list_local=open("/root/sap_2017/master_board_list.txt", 'r+')
+    pro = probelist_raw
+    mbl = master_board_list_local
+    for probe in pro:
+        probe = probe.rstrip() #removes newline character \n from list elements.
+        probelist.append(probe)
+    probelist_raw.close()
+    for i in mbl:
+        i = i.rstrip()
+        master.append(i)
+    bnum = 0
+    for u in probelist: #makes sure the probe list matchs the saved and local master list
+        row = ''
+        if u not in master and u != 'not found.': #adds to master list text file if not already there and turns that probe on
+            for i in master:
+                if i[:5] == 'board': #counts how many boards are in master list
+                    bnum += 1
+            try:
+                b_id = 'board' + blist[bnum]
+            except IndexError:
+                bnum = bnum - 26
+                b_id = 'board' + blist[bnum] + '2'
+            te = temp(u)
+            # te_float = float(te)
+            print(type(te))
+            print(te)
+            if te >= 30: #!!!!!Link this to the BIT mode, allow the probe to heat up for 30 to 60 sec. test the average warm up time!!!!!!
+                t = '?hot?'
+            elif te < 30:
+                t = '?cold?'
+            row += b_id + '\n' + u + '\n' + t + '\n' + '----' + '\n'
+            bnum = 0
+            master.append(row)
+            master_board_list_local.write(row)
+    master_board_list_local.close()
+    return(probelist, master)
+
+def op_list(probelist, master):
+    on_master = []
+    barrier = False
+    gate = False
+    oncount = 0
+    loc = 0
+    for i in master:
+        if i[:5] == 'board':
+            start = master.index(i)
+        elif i in probelist:
+            oncount += 1
+        elif i == '----':
+            barrier = True
+        if barrier == True:
+            if oncount > 0:
+                master.insert(start, "ON")
+                oncount = 0
+            barrier = False
+    # print(master)
+    for s in master:
+        if s == "ON":
+            gate = True
+        if gate == True:
+            if s[:5] == 'board':
+                on_master.append(s)
+            if len(s) >= 15:
+                on_master.append(s)
+            if s == 'hot' or s == 'cold':
+                on_master.append(s)
+            elif s == '?hot?' or s == '?cold?':
+                on_master.append(s)
+            if s == '----':
+                gate = False
+    return(on_master)
+
+def reader(probelist, on_master): #Rearrange data: date, ?run?, board, probe, hot/cold, temp
+    data_output_raw=open("/root/sap_2017/data/data_output_raw.txt", 'a')
+    data_output_ordered=open("/root/sap_2017/data/data_output_ordered.csv", 'a')
+    master_data_o = ''
+    o_sub_data = ''
+    master_data_o_body = []
+    now = datetime.datetime.now()
+    date = now.strftime("%Y-%m-%d")
+    master_data = '\n' + date + ', '
+    data_output_ordered.write('\n' + master_data + '\n')
+    label = ['Time','Board','Probe ID','Hot/Cold','Temp']
+    append_counter = 1
+    for i in on_master:
+        time = now.strftime("%H:%M")
+        sub_data = ''
+        if i[:5] == 'board':
+            board = i
+            sub_data +=  time + ', ' + board + ', '
+            append_counter += 1
+        if len(i) >= 15:
+            probe_id = i
+            sub_data += probe_id + ', '
+            t = temp(i)
+            append_counter += 1
+        if i == 'hot' or i == 'cold':
+            HorC = i
+            sub_data += HorC + ', ' + str(t) + ', '
+            append_counter += 1
+        elif i == "?hot?" or i == '?cold?':
+            HorC = i
+            sub_data += HorC + ', ' + str(t) + ', '
+            append_counter += 1
+        if append_counter == 3:
+            o_sub_data = time, board, probe_id, HorC, t
+            master_data_o_body.append(o_sub_data)
+            append_counter = 1
+        master_data += sub_data
+    master_data += '\n'
+    dataf = pd.DataFrame.from_records(master_data_o_body, columns=label)
+    data_output_raw.write(master_data)
+    data_output_ordered.write(str(dataf))
+    data_output_raw.close()
+    data_output_ordered.close()
+    return(master_data, dataf)
+
+# def exporter(master_date, dataf): #uses data_output data and formats depending on file format is specified in config file.
+    # if x is excel:
+    #     writer = pd.ExcelWriter('output.xlsx') #
+    #     dataf.to_excel(writer,'Sheet1') #
+    #     writer.save() #
+
+# def BIT(probelist): #Test boards, probe temps(If they're negative numbers or zero), internet connection, maybe compares op_list to probelist
+#         fail_list = open("fail_list.txt", 'a')
+#     try:
+#         urllib2.urlopen('http://209.85.255.255', timeout=1)
+#         return(net_up) 
+#     except urllib2.URLError as err: 
+#         return(net_down)
+#     fail_probes = ''
+#     fail_num = 0
+#     for i in probelist:
+#         t = temp(i)
+#         if t <= 0:
+#             print(i + ' has a temp of 0 or less. Check probe is installed correctly.') #have this write to BIT txt file
+#             fail_probes += i + ', '
+#             fail_num += 1
+#     if fail_num > 0:
+#         return(probe_down)
+#         fail_list.append(fail_probes + '\n')
+#     elif fail_num == 0:
+#         return(probe_up)
+#         fail_list.append('no failed probes.' + '\n')
+#     config = os.path.exists('/root/config.txt') #CHANGE WHEN I MIGRATE TO BBB IN THE FIELD!!!
+#     if config == True:
+#         return(config_up)
+#     elif config == False:
+#         return(config_down)
+#         fail_list.append("Config file is missing, will auto generate new file with defaults." + '\n')
+#         # make_config()
+#     fail_list.close()
+        
+# def make_config(): #makes a default config file if file is missing during opeations.
+            
+
+def temp(i):
+    probe=open("/sys/devices/w1_bus_master1/" + i + "/w1_slave", 'r')
+    for u in probe:
+        u = u.rstrip()
+        sub_probe = ''
+        for x in u:
+            r = u.index(x) + 1
+            if x == 't' and u[r] == '=':
+                p = u.index(x)
+                sub_probe += u[p+2:]
+                sub_probe = sub_probe[:2] + '.' + sub_probe[2:4]
+    sub_float = float(sub_probe)
+    probe.close()
+    return(sub_float)
+
+def tempreader(probelist, i): #Reads temps, adds them to operational dictionary, displays it and pumps out data.
+    try:
+        for i in probelist: 
+            sub_probe = ''
+            probe=open("/sys/devices/w1_bus_master1/" + i + "/w1_slave", 'r')
+            for u in probe:
+                for x in u:
+                    r = u.index(x) + 1
+                    if x == 't' and u[r] == '=':
+                        p = u.index(x)
+                        sub_probe += u[p+2:]
+                        sub_probe = sub_probe[:2] + '.' + sub_probe[2:4]
+            probe.close()
+            return(sub_probe)
+    except:
+        print('\n' + "No probes found." + "\n" + "Either the probe board isn't being supplied power or the data and ground pins aren't install proper on the BeagleBone." + '\n' + "Ground pin:1 row:p8, Data pin:11, row:p8." + '\n')
+
+# def SIcheckerpro(): #a function that checks if there is an active internet connect, if not back up on SD card, try to send through Harvard U, bluetooth and send a help message. WRITE IN BASH!!!
+
+# def sendit(): #sends data to config position and pumps data out over the internet to tower PC, off site storage and website
+
+def temp_converter(c): #converts temp to fahrenheit base off of config preferences 
+    f = c * 9/5 + 32     
+    return(c, f) 
+
+def main(): #add a try and exception to each section. Add a while loop that goes off of config operational time line.
+    while True:
+        probelist, master = masterprobe()
+        on_master = op_list(probelist, master)
+        # print(on_master)
+        data = reader(probelist, on_master)
+        time.sleep(60)
+        # t = temp(probelist)
+        print(1)
+
+main() #excutes program

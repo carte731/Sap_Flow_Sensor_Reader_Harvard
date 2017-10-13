@@ -1,0 +1,64 @@
+#!/usr/bin/python
+
+import os
+import sys
+import datetime
+import time
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt 
+import pickle
+
+def python_v():
+    ver = sys.version_info[0]
+    return(ver)
+
+def restart(ver):
+    if ver < 3:
+        re = str(raw_input("Would you like to graph another pickle file? (Yes(y) or No(n)): "))
+    elif ver >= 3:
+        re = str(input("Would you like to graph another pickle file? (Yes(y) or No(n)): "))
+    re = re.lower()
+    if re == 'yes' or re == 'y':
+        main()
+    elif re == 'no' or re == 'n':
+        print('\n' + 'Exiting...' + '\n')
+        exit()
+    else:
+        print('\n' + 'Enter a valid answer.' + '\n')
+        restart(ver)
+
+def plot_it(ver):
+    if ver < 3:
+        path = raw_input("Please enter full path to sap_graph or normalized pickle data file: ")
+        pwd = os.path.exists(path)
+    elif ver >= 3:
+        path = str(input("Please enter full path to sap_graph or normalized pickle data file: "))
+        pwd = os.path.exists(path)
+    if pwd == True:
+        try:
+            with open(path, 'rb') as norm:
+                df = pickle.load(norm) 
+        except:
+            with open(path, 'rb') as norm:
+                df = pd.read_pickle(norm)
+        now = datetime.datetime.now()
+        date = now.strftime("%Y-%m-%d, %H:%M:%s")
+        graphs = []
+        for i in df.columns:
+            if i not in graphs:
+                graphs.append(i)
+        gx = df[graphs].plot(title="Sap Flux Density for" + date)
+        gx.set_xlabel("Total Operational Time in Minutes")
+        gx.set_ylabel("Sap Flux Density Values (Normalized)")
+        plt.show()
+    else:
+        print('\n' + "Please enter a valid directory path." + '\n')
+        plot_it(ver)
+
+def main():
+    ver = python_v()
+    plot_it(ver)
+    restart(ver)
+
+main()

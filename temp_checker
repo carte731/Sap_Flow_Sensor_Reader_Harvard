@@ -1,0 +1,152 @@
+#!/usr/bin/python
+#Temp Checker V.1.2
+
+import datetime
+
+def probeslist():
+    probelist = []
+    master = []
+    with open("/sys/devices/w1_bus_master1/w1_master_slaves", 'r') as pl:
+        for t in pl:
+            t = t.strip()
+            probelist.append(t)
+    with open("/root/sap_2017/master_board_list.txt", 'r') as mbl:
+        for i in mbl:
+            i = i.rstrip()
+            master.append(i)
+    return(probelist, master)
+
+def op_list(probelist, master):
+    on_master = []
+    barrier = False
+    gate = False
+    oncount = 0
+    loc = 0
+    for i in master:
+        if i[:5] == 'board':
+            start = master.index(i)
+        elif i in probelist:
+            oncount += 1
+        elif i == '----':
+            barrier = True
+        if barrier == True:
+            if oncount > 0:
+                master.insert(start, "ON")
+                oncount = 0
+            barrier = False
+    for s in master:
+        if s == "ON":
+            gate = True
+        if gate == True:
+            if s[:5] == 'board':
+                on_master.append(s)
+            if len(s) >= 15:
+                on_master.append(s)
+            if s == 'hot' or s == 'cold':
+                on_master.append(s)
+            elif s == '?hot?' or s == '?cold?':
+                on_master.append(s)
+            if s == '----':
+                on_master.append(s)
+                gate = False
+    return(on_master)
+
+def tempreader(i): #Reads temps, adds them to operational dictionary, displays it and pumps out data.
+    sub_probe = ''
+    with open("/sys/devices/w1_bus_master1/" + i + "/w1_slave", 'r') as probe:
+        for u in probe:
+            for x in u:
+                r = u.index(x) + 1
+                if x == 't' and u[r] == '=':
+                    p = u.index(x)
+                    sub_probe += u[p+2:]
+                    if len(sub_probe) == 4:
+                        sub_probe = sub_probe[:1] + '.' + sub_probe[1:]
+                    elif len(sub_probe) > 4:
+                        sub_probe = sub_probe[:2] + '.' + sub_probe[2:]
+    sub_float = float(sub_probe)
+    return(sub_float)
+
+def restart():
+    re = str(raw_input("Would you like to check the temp again? (Yes(y) or No(n)): "))
+    re = re.lower()
+    if re == 'yes' or re == 'y':
+        main()
+    elif re == 'no' or re == 'n':
+        print('\n' + 'Exiting...' + '\n')
+        exit()
+    else:
+        print('\n' + 'Enter a valid answer.' + '\n')
+        restart()
+
+def scanner(probelist, on_master):
+    now = datetime.datetime.now()
+    dt = now.strftime("%Y-%m-%d %H:%M")
+    print('\n' + "Probe temp check for " + dt + '\n' + '---------' + '\n')
+    probe_op_list = '\n' + 'PROBE_LIST' + '\n' + '---------'
+    probe_stat_list = '\n' + 'PROBE_STATUS' + '\n' + '---------' + '\n'
+    if probelist != ['not found.']:
+        append_counter = 0
+        probe_id = 0
+        for i in on_master:
+            if i[:5] == 'board':
+                board = i
+                append_counter += 1
+            if len(i) >= 15:
+                probe = i
+                sub_float = tempreader(i)
+                append_counter += 1
+                # probe_id += 1
+                if sub_float == 0:
+                    probe_op_list += '\n' + probe + ": Probe is down."
+                elif sub_float < 0:
+                    probe_op_list += '\n' + probe + ": Probe is down."
+                else:
+                    probe_op_list += '\n' + probe + ": Probe is up and operational."
+            if i == 'hot' or i == 'cold':
+                horc = i
+                append_counter += 1
+            elif i == "?hot?" or i == '?cold?':
+                horc = i
+                append_counter += 1
+            if i == '----':
+                append_counter = 0
+            if append_counter >= 3:
+                probe_stat_list += board + ': ' +  probe + ', ' + horc + ': ' + str(sub_float) + '\n'
+                append_counter = 1
+        print(probe_stat_list)
+        print(probe_op_list + '\n')
+    elif probelist == ['not found.']:
+        print('\n' + "No probes detected..." + '\n')
+
+    # i = 1
+    # if probelist != ['not found.']:
+    #     probe_op_list = '\n' + 'PROBE_LIST'
+    #     probe_op_list += '\n' + '---------'
+    #     for t in probelist:
+    #         sub_float = tempreader(t)
+    #         if i == 1:
+    #             print('\n' + 'PROBE_STATUS')
+    #             print('---------')
+    #             i = 0
+    #         if sub_float == 0:
+    #             print(t + " probe temp is zero. Check if system is wired correctly.")
+    #             probe_op_list += '\n' + t + ": Probe is down."
+    #         elif sub_float < 0:
+    #             print(t + " probe temp is negative. Check if power is being supplied.")
+    #             probe_op_list += '\n' + t + ": Probe is down."
+    #         else:
+    #             print(t + " probes temp is " + str(sub_float))
+    #             probe_op_list += '\n' + t + ": Probe is up and operational."
+    #     probe_op_list += '\n'
+    #     print(probe_op_list)
+    # elif probelist == ['not found.']:
+    #     print('\n' + "No probes detected..." + '\n')
+
+def main():
+    probelist, master = probeslist()
+    on_master = op_list(probelist, master)
+    scanner(probelist, on_master)
+    restart()
+
+main()

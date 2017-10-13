@@ -1,0 +1,69 @@
+#!/usr/bin/python
+
+def probeslist():
+    probelist = []
+    with open("/sys/devices/w1_bus_master1/w1_master_slaves", 'r') as pl:
+        for t in pl:
+            t = t.strip()
+            probelist.append(t)
+    return(probelist)
+
+def tempreader(i): #Reads temps, adds them to operational dictionary, displays it and pumps out data.
+    sub_probe = ''
+    with open("/sys/devices/w1_bus_master1/" + i + "/w1_slave", 'r') as probe:
+        for u in probe:
+            for x in u:
+                r = u.index(x) + 1
+                if x == 't' and u[r] == '=':
+                    p = u.index(x)
+                    sub_probe += u[p+2:]
+                    if len(sub_probe) == 4:
+                        sub_probe = sub_probe[:1] + '.' + sub_probe[1:]
+                    elif len(sub_probe) > 4:
+                        sub_probe = sub_probe[:2] + '.' + sub_probe[2:]
+    sub_float = float(sub_probe)
+    return(sub_float)
+
+def restart():
+    re = str(raw_input("Would you like to check the temp again? (Yes(y) or No(n)): "))
+    re = re.lower()
+    if re == 'yes' or re == 'y':
+        main()
+    elif re == 'no' or re == 'n':
+        print('\n' + 'Exiting...' + '\n')
+        exit()
+    else:
+        print('\n' + 'Enter a valid answer.' + '\n')
+        restart()
+
+def scanner(probelist):
+    i = 1
+    if probelist != ['not found.']:
+        probe_op_list = '\n' + 'PROBE_LIST'
+        probe_op_list += '\n' + '---------'
+        for t in probelist:
+            sub_float = tempreader(t)
+            if i == 1:
+                print('\n' + 'PROBE_STATUS')
+                print('---------')
+                i = 0
+            if sub_float == 0:
+                print(t + " probe temp is zero. Check if system is wired correctly.")
+                probe_op_list += '\n' + t + ": Probe is down."
+            elif sub_float < 0:
+                print(t + " probe temp is negative. Check if power is being supplied.")
+                probe_op_list += '\n' + t + ": Probe is down."
+            else:
+                print(t + " probes temp is " + str(sub_float))
+                probe_op_list += '\n' + t + ": Probe is up and operational."
+        probe_op_list += '\n'
+        print(probe_op_list)
+    elif probelist == ['not found.']:
+        print('\n' + "No probes detected..." + '\n')
+
+def main():
+    probelist = probeslist()
+    scanner(probelist)
+    restart()
+
+main()
